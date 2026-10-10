@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Control de Merma (temporal)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+:root{--bg:#f4f6f9;--card:#fff;--ink:#1f2933;--mut:#617080;--line:#d8dee6;--acc:#0b5cab;--accbg:#e6f0fb;--pt:#2f7d4f;--m1:#e0a526;--m2:#d8742b;--m3:#b8433a;--m4:#7a4fa3;--nr:#8a94a0;--bad:#b42318;--badbg:#fdecea;--okbg:#e5f4ea;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12171d;--card:#1b222b;--ink:#e6eaef;--mut:#9aa7b4;--line:#2f3a46;--acc:#6aaef0;--accbg:#1d3147;--badbg:#3a1c1a;--okbg:#17301f;--bad:#ff8a80}}
+:root[data-theme="dark"]{--bg:#12171d;--card:#1b222b;--ink:#e6eaef;--mut:#9aa7b4;--line:#2f3a46;--acc:#6aaef0;--accbg:#1d3147;--badbg:#3a1c1a;--okbg:#17301f;--bad:#ff8a80}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--card);border-bottom:1px solid var(--line);padding:10px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+h1{font-size:17px;margin:0;flex:1}
+nav{display:flex;gap:6px;flex-wrap:wrap;width:100%}
+button,select,input,textarea{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 10px;max-width:100%}
+button{cursor:pointer}button:hover{border-color:var(--acc)}
+button.on,button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+button.del{color:var(--bad)}
+main{max-width:1100px;margin:0 auto;padding:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
+details>summary{cursor:pointer;font-weight:600;list-style:none;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+details>summary::-webkit-details-marker{display:none}
+details>summary::before{content:"▸";color:var(--mut)}details[open]>summary::before{content:"▾"}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:end}
+label{display:flex;flex-direction:column;font-size:12px;color:var(--mut);gap:3px}
+label input,label select{min-width:110px}
+.tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{color:var(--mut);font-weight:600}td.n,th.n{text-align:right}
+.b{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;font-weight:600;background:var(--accbg);color:var(--acc)}
+.b.ok{background:var(--okbg);color:var(--pt)}.b.bad{background:var(--badbg);color:var(--bad)}
+.bar{display:flex;height:20px;border-radius:6px;overflow:hidden;background:var(--line);margin:8px 0}
+.bar i{display:block;height:100%}
+.leg{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--mut)}.leg s{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;text-decoration:none}
+.g2{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
+.mut{color:var(--mut);font-size:13px}
+.toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 14px;border-radius:10px;z-index:9;max-width:90%}
+textarea{width:100%;min-height:120px;font:12px monospace}
+</style>
+</head>
+<body>
+<header><h1>⚖️ Control de Merma <span class="mut">· temporal</span></h1><button id="theme" title="Tema">🌓</button>
+<nav id="nav"></nav></header>
+<main id="app"></main>
+<script>
+/*CALC*/
+const N=x=>{const n=parseFloat(String(x??'').replace(/,/g,''));return isFinite(n)?n:0};
+const sumM=(b,k)=>((b.m&&b.m[k])||[]).reduce((a,r)=>a+N(r.kg),0);
+function calc(b){const c=b.calc||{},w=N(b.cantidad),wcaja=N(c.paq)*N(c.pz)*N(c.wsu)/1000;
+ const pt=N(c.ptm)>0?N(c.ptm):N(c.cajas)*wcaja,m=['m1','m2','m3','m4'].map(k=>sumM(b,k));
+ const mrep=m.reduce((a,x)=>a+x,0),mtot=w-pt,norep=mtot-mrep,p=x=>w>0?x/w*100:0;
+ const st=(w<=0||pt<=0)?'incompleto':(norep<-0.005?'revisar':'ok');
+ return{w,wcaja,pt,m,mrep,mtot,norep,ppt:p(pt),pm:m.map(p),pmrep:p(mrep),pmtot:p(mtot),pnorep:p(norep),st}}
+/*ENDCALC*/
+/*IMPORT*/
+const norm=s=>String(s??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+const COLS={cantidad:'cantidad',iddocument:'id_contpaq',iddocumento:'id_contpaq',categoria:'categoria',clave:'clave',lote:'lote',fecha:'fecha',titulo:'ot'};
+function toDate(v){if(v instanceof Date&&!isNaN(v))return v.toISOString().slice(0,10);
+ if(typeof v==='number'&&v>20000)return new Date(Math.round((v-25569)*864e5)).toISOString().slice(0,10);
+ const s=String(v??'').trim(),m=s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+ return m?`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`:s.slice(0,10)}
+const keyOf=r=>JSON.stringify([N(r.cantidad).toFixed(4),r.id_contpaq,r.categoria,r.clave,r.lote,r.fecha,r.ot].map(x=>String(x).trim().toLowerCase()));
+function mapRows(rows,claves,existing,regla){const allow=claves.map(c=>c.trim().toLowerCase()).filter(Boolean),ini=String(regla?.inicia||'').trim().toLowerCase(),con=String(regla?.contiene||'').trim().toLowerCase();
+ const seen=new Set(existing.map(keyOf)),lotes=new Set(existing.map(r=>String(r.lote).trim().toLowerCase()));
+ const out={add:[],dup:0,filt:0,neg:0,rev:0,cols:new Set(),ej:[],keys:[]};
+ const colmap={},has=f=>Object.values(colmap).includes(f),keys=Object.keys(rows[0]||{});out.keys=keys;
+ keys.forEach(k=>{const f=COLS[norm(k)];if(f&&!has(f))colmap[k]=f});
+ keys.forEach(k=>{if(colmap[k])return;const n=norm(k),f=(n.includes('iddoc')||n==='documento')?'id_contpaq':n.includes('categor')?'categoria':n.startsWith('clave')?'clave':n.includes('lote')?'lote':n.startsWith('fecha')?'fecha':n.includes('titulo')?'ot':n.startsWith('cant')?'cantidad':'';if(f&&!has(f))colmap[k]=f});
+ for(const row of rows){const r={cantidad:0,id_contpaq:'',categoria:'',clave:'',lote:'',fecha:'',ot:''};
+  for(const k in colmap){const f=colmap[k];out.cols.add(f);let v=row[k];
+   if(f==='cantidad'){const n=N(v);if(n<0)out.neg++;v=Math.abs(n)}else if(f==='fecha')v=toDate(v);else v=String(v??'').trim();r[f]=v}
+  if(!r.lote&&!r.cantidad)continue;
+  {const cl=String(r.clave).trim().toLowerCase(),tx=Object.values(row).filter(v=>typeof v==='string').join(' ').toLowerCase(),pass=allow.includes(cl)||((ini||con)&&(!ini||cl.startsWith(ini))&&(!con||tx.includes(con)));if((allow.length||ini||con)&&!pass){out.filt++;if(out.ej.length<4&&!out.ej.includes(r.clave))out.ej.push(r.clave);continue}}
+  const k=keyOf(r);if(seen.has(k)){out.dup++;continue}seen.add(k);
+  r.rev=lotes.has(String(r.lote).trim().toLowerCase());if(r.rev)out.rev++;lotes.add(String(r.lote).trim().toLowerCase());out.add.push(r)}
+ return out}
+/*ENDIMPORT*/
+const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const uid=()=>Math.random().toString(36).slice(2,9),KEY='cm_temp_v1',f2=x=>N(x).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
+const today=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10),fmtD=s=>{const m=String(s).match(/^(\d{4})-(\d\d)-(\d\d)/);return m?`${m[3]}/${m[2]}/${m[1]}`:s||''};
+const newB=r=>({id:uid(),turno:'',operador:'',maquina:'',estado:'proceso',m:{m1:[],m2:[],m3:[],m4:[]},calc:{paq:'',pz:'',wsu:'',cajas:'',ptm:''},...r});
+let S=(()=>{try{const x=JSON.parse(localStorage.getItem(KEY));if(x&&x.salidas)return x}catch(e){}return{tintas:[],salidas:[],claves:[],conceptos:['Arranque','Cambio de rollo','Ajuste de máquina','Mala impresión']}})();
+const U={tab:'tintas',sub:'orden',open:new Set(),f:{q:'',estado:'todas',op:'',maq:'',d1:'',d2:''},msg:''};
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+const rg=()=>S.regla||(S.regla={inicia:'CUP',contiene:'SBS'}),isReal=s=>!(s.manual&&!s.lote&&!N(s.cantidad));
+const AREAS=[['m1','M1 Impresión','--m1'],['m2','M2 Suajado','--m2'],['m3','M3 Desbarbe','--m3'],['m4','M4 Formado','--m4']];
+let DL=null;(async()=>{try{DL=await window.claude?.use('downloads')}catch(e){}})();
+function toast(t){const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.appendChild(e);setTimeout(()=>e.remove(),3500)}
+async function out(name,buf,mime){if(DL){try{await DL.save({filename:name,data:buf});return}catch(e){if(e&&e.code==='declined')return}}
+ try{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([buf],{type:mime}));a.download=name;a.click();toast('Si no se descargó, usa la copia en la pestaña Datos')}catch(e){toast('No se pudo descargar aquí')}}
+/* ---------- vistas ---------- */
+const TABS=[['tintas','Tintas'],['salidas','Salidas'],['bobinas','Bobinas'],['stats','Estadísticas'],['datos','Datos']];
+function render(){$('#nav').innerHTML=TABS.map(([k,t])=>`<button class="${U.tab===k?'on':''}" data-act="tab" data-v="${k}">${t}</button>`).join('');
+ $('#app').innerHTML=({tintas:vTintas,salidas:vSalidas,bobinas:vBobinas,stats:vStats,datos:vDatos})[U.tab]()}
+const tandas=()=>{const g={};return[...S.tintas].sort((a,b)=>(a.fecha+a.id).localeCompare(b.fecha+b.id)).map(t=>(g[t.ot]=(g[t.ot]||0)+1,{...t,n:g[t.ot]}))};
+function vTintas(){const T=tandas().reverse();
+ return`<div class="card"><b>Nueva entrega de tintas</b><div class="row" style="margin-top:8px">
+ <label>Fecha<input type="date" id="t_f" value="${today()}"></label><label>Orden de trabajo<input id="t_ot" placeholder="5859"></label>
+ <label>Órdenes entregadas<input id="t_n" type="number" min="0" placeholder="10"></label><label>Observaciones<input id="t_o"></label>
+ <button class="pri" data-act="addT">Agregar</button></div><p class="mut">Si una orden recibe otra entrega otro día, se registra como una tanda nueva.</p></div>
+ <div class="card tw"><table><tr><th>Fecha</th><th>Orden</th><th>Tanda</th><th class="n">Entregadas</th><th>Observaciones</th><th></th></tr>
+ ${T.map(t=>U.editT===t.id?`<tr><td><input type="date" id="e_f" value="${t.fecha}"></td><td><input id="e_ot" value="${esc(t.ot)}" style="min-width:80px"></td><td>#${t.n}</td><td><input id="e_n" type="number" min="0" value="${t.entregadas}" style="min-width:70px"></td><td><input id="e_o" value="${esc(t.obs)}"></td><td><button class="pri" data-act="saveT" data-id="${t.id}">Guardar</button> <button data-act="cancelT">Cancelar</button></td></tr>`:`<tr><td>${fmtD(t.fecha)}</td><td>${esc(t.ot)}</td><td>#${t.n}</td><td class="n">${t.entregadas}</td><td>${esc(t.obs)}</td><td><button data-act="editT" data-id="${t.id}" title="Editar">✎</button> <button class="del" data-act="delT" data-id="${t.id}">✕</button></td></tr>`).join('')||'<tr><td colspan=6 class="mut">Sin entregas registradas</td></tr>'}</table></div>`}
+function vSalidas(){const sub=U.sub,sal=S.salidas;
+ const imp=`<details class="card" ${sal.length?'':'open'}><summary>Importar salidas desde Excel</summary><div class="row" style="margin-top:8px">
+ <label>Archivo (.xlsx, .xls, .csv)<input type="file" id="f_xlsx" accept=".xlsx,.xls,.csv"></label></div>
+ <p class="mut">Se leen: Cantidad, Id document, Categoría, Clave, Lote, Fecha y Título. Se quitan duplicados exactos y las cantidades negativas pasan a positivo.${(()=>{const r=rg(),p=[r.inicia&&'empieza con '+r.inicia,r.contiene&&'contiene '+r.contiene].filter(Boolean);return p.length||S.claves.length?` <b>Solo se importan salidas cuya clave ${p.join(' y ')}${S.claves.length?(p.length?', más las de la lista exacta':'esté en la lista exacta'):''}.</b>`:' <b>Sin filtro de clave: se importan todas.</b>'})()}</p>${U.msg?`<p><b>${U.msg}</b></p>`:''}</details>`;
+ const nav=[['orden','Con orden'],['sin','Sin orden'],['todo','Concentrado']].map(([k,t])=>`<button class="${sub===k?'on':''}" data-act="sub" data-v="${k}">${t}</button>`).join(' ');
+ let body='';
+ if(sub==='orden'){const T=tandas(),ots=[...new Set([...T.map(t=>t.ot),...sal.filter(s=>s.ot).map(s=>s.ot)])].sort();
+  body=ots.map(ot=>{const ts=T.filter(t=>t.ot===ot),ent=ts.reduce((a,t)=>a+N(t.entregadas),0),bs=sal.filter(s=>s.ot===ot),real=bs.filter(isReal).length,pend=ent-real,faltan=Math.max(0,ent-bs.length);
+   return`<details class="card" data-key="o${esc(ot)}" ${U.open.has('o'+ot)?'open':''}><summary>OT ${esc(ot)} <span class="b">entregadas ${ent}</span> <span class="b">salidas ${real}</span> <span class="b ${pend>0?'bad':'ok'}">pendientes ${pend}</span></summary>
+   <p class="mut">Tandas: ${ts.map(t=>`#${t.n} ${fmtD(t.fecha)} (${t.entregadas})`).join(' · ')||'sin tintas'}</p>${faltan>0?`<button class="pri" data-act="crearPend" data-ot="${esc(ot)}" data-n="${faltan}">Crear ${faltan} registros para llenar</button>`:''}${bs.map(card).join('')}</details>`}).join('')||'<p class="mut">Sin órdenes todavía.</p>'}
+ else if(sub==='sin')body=`<div class="card">${tbl(sal.filter(s=>!s.ot))}</div>`;
+ else body=`<div class="card"><input placeholder="Buscar lote, orden, clave…" data-act="q2" value="${esc(U.q2||'')}">${tbl(sal.filter(s=>!U.q2||JSON.stringify(s).toLowerCase().includes(U.q2.toLowerCase())),1)}</div>`;
+ return imp+`<div class="row" style="margin-bottom:10px">${nav}</div>`+body+`<datalist id="dl_c">${S.conceptos.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>`}
+function tbl(L,full){const rows=L.map(s=>{const c=calc(s);return`<tr><td>${fmtD(s.fecha)}</td><td>${esc(s.ot)||'—'}</td><td>${esc(s.lote)}${s.rev?' <span class="b bad" title="Lote repetido con datos distintos">repetido</span>':''}</td><td>${esc(s.clave)}</td>
+ ${full?`<td>${esc(s.categoria)}</td><td>${esc(s.id_contpaq)}</td><td>${esc(s.turno)}</td><td>${esc(s.operador)}</td><td>${esc(s.maquina)}</td>`:''}<td class="n">${f2(s.cantidad)}</td>
+ ${full?c.m.map(x=>`<td class="n">${x?f2(x):''}</td>`).join(''):''}<td><span class="b ${s.estado==='terminada'?'ok':''}">${s.estado==='terminada'?'Terminada':'En proceso'}</span></td></tr>`}).join('');
+ return`<div class="tw"><table><tr><th>Fecha</th><th>Orden</th><th>Lote</th><th>Clave</th>${full?'<th>Categoría</th><th>ID Contpaq</th><th>Turno</th><th>Operador</th><th>Máquina</th>':''}<th class="n">Kg</th>${full?'<th class="n">M1</th><th class="n">M2</th><th class="n">M3</th><th class="n">M4</th>':''}<th>Estado</th></tr>${rows||'<tr><td colspan=14 class="mut">Sin registros</td></tr>'}</table></div>`}
+function filt(){const f=U.f,q=f.q.toLowerCase();return S.salidas.filter(s=>(f.estado==='todas'||s.estado===f.estado)&&(!f.op||s.operador===f.op)&&(!f.maq||s.maquina===f.maq)&&(!f.d1||s.fecha>=f.d1)&&(!f.d2||s.fecha<=f.d2)&&(!q||[s.lote,s.ot,s.clave,s.id_contpaq].join(' ').toLowerCase().includes(q)))}
+function vBobinas(){const f=U.f,ops=[...new Set(S.salidas.map(s=>s.operador).filter(Boolean))],mqs=[...new Set(S.salidas.map(s=>s.maquina).filter(Boolean))],L=filt();
+ const opt=(a,v)=>`<option value="">Todos</option>`+a.map(x=>`<option ${x===v?'selected':''}>${esc(x)}</option>`).join('');
+ return`<details class="card"><summary>Filtros <span class="mut">(${L.length} de ${S.salidas.length})</span></summary><div class="row" style="margin-top:8px">
+ <label>Buscar<input data-f="q" value="${esc(f.q)}" placeholder="lote, orden, clave"></label>
+ <label>Estado<select data-f="estado"><option value="todas">Todas</option><option value="proceso" ${f.estado==='proceso'?'selected':''}>En proceso</option><option value="terminada" ${f.estado==='terminada'?'selected':''}>Terminadas</option></select></label>
+ <label>Operador<select data-f="op">${opt(ops,f.op)}</select></label><label>Máquina<select data-f="maq">${opt(mqs,f.maq)}</select></label>
+ <label>Desde<input type="date" data-f="d1" value="${f.d1}"></label><label>Hasta<input type="date" data-f="d2" value="${f.d2}"></label></div></details>
+ <div class="row" style="margin-bottom:10px"><button class="pri" data-act="pdfEntrega">PDF entrega de terminadas</button><span class="mut">Incluye las terminadas del filtro actual.</span></div>
+ ${L.map(card).join('')||'<p class="mut">No hay bobinas con este filtro.</p>'}
+ <datalist id="dl_c">${S.conceptos.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>`}
+function card(s){const c=calc(s),k='b'+s.id,inp=(p,l,t='text',w='')=>`<label>${l}<input ${t==='number'?'type="number" step="any"':''} data-id="${s.id}" data-p="${p}" value="${esc(p.split('.').reduce((o,x)=>o?.[x],s))}" ${w}></label>`;
+ return`<details class="card" data-key="${k}" ${U.open.has(k)?'open':''}><summary>${esc(s.lote)||'Registro sin lote'} <span class="mut">OT ${esc(s.ot)||'—'} · ${f2(s.cantidad)} kg${s.fecha_completo?' · completa '+fmtD(s.fecha_completo):''}</span>
+ <span class="b ${s.estado==='terminada'?'ok':''}">${s.estado==='terminada'?'Terminada':'En proceso'}</span><span class="b ${c.st==='ok'?'ok':c.st==='revisar'?'bad':''}">${c.st==='ok'?'Cuadra':c.st==='revisar'?'Revisar':'Faltan datos'}</span></summary>
+ <details data-key="d${s.id}" ${(U.open.has('d'+s.id)||!s.lote||!N(s.cantidad))?'open':''} style="margin:8px 0"><summary class="mut">Datos de la salida (editar)</summary><div class="row" style="margin-top:6px">${inp('lote','Lote')}${inp('ot','Orden de trabajo')}${inp('clave','Clave')}${inp('categoria','Categoría')}${inp('id_contpaq','ID Contpaq')}<label>Fecha<input type="date" data-id="${s.id}" data-p="fecha" value="${esc(s.fecha)}"></label>${inp('cantidad','Peso de la bobina (kg)','number')}</div></details>
+ <div class="row" style="margin:10px 0">${inp('turno','Turno')}${inp('operador','Operador')}${inp('maquina','Máquina')}</div>
+ <b>Datos para el cálculo</b><div class="row" style="margin:6px 0 10px">${inp('calc.paq','Paquetes por caja','number')}${inp('calc.pz','Piezas por paquete','number')}${inp('calc.wsu','W suaje (g/pieza)','number')}${inp('calc.cajas','Cajas','number')}${inp('calc.ptm','PT manual kg (opcional)','number')}</div>
+ <b>Merma por área</b><div class="g2" style="margin:6px 0 10px">${AREAS.map(([a,t,col])=>`<div><div class="mut"><s style="background:var(${col});display:inline-block;width:10px;height:10px;border-radius:2px"></s> ${t}: <b>${f2(sumM(s,a))} kg</b></div>
+  ${(s.m[a]||[]).map((r,i)=>`<div class="row" style="margin-top:4px"><input type="number" step="any" style="width:90px" data-id="${s.id}" data-p="m.${a}.${i}.kg" value="${esc(r.kg)}" placeholder="kg"><input list="dl_c" style="flex:1;min-width:110px" data-id="${s.id}" data-p="m.${a}.${i}.concepto" value="${esc(r.concepto)}" placeholder="concepto"><button class="del" data-act="delM" data-id="${s.id}" data-a="${a}" data-i="${i}">✕</button></div>`).join('')}
+  <button style="margin-top:4px" data-act="addM" data-id="${s.id}" data-a="${a}">＋ agregar</button></div>`).join('')}</div>
+ ${resultado(s,c)}<div class="row" style="margin-top:10px"><button class="pri" data-act="pdfBob" data-id="${s.id}">PDF resultado</button>
+ ${s.estado==='terminada'?`<button data-act="toggleE" data-id="${s.id}">Reabrir (en proceso)</button>`:`<button class="pri" style="background:var(--pt);border-color:var(--pt)" data-act="completo" data-id="${s.id}">✔ Completo</button>`}<button class="del" data-act="delB" data-id="${s.id}">Eliminar</button></div></details>`}
+function resultado(s,c){if(c.st==='incompleto')return`<p class="b bad">${c.w<=0?'Falta el peso de la bobina (está en "Datos de la salida"). ':''}${c.pt<=0?'Faltan presentación, W suaje y cajas (o PT manual).':''}</p>`;
+ const seg=[[c.pt,'--pt','Producto terminado'],...AREAS.map(([a,t,col],i)=>[c.m[i],col,t]),[Math.max(c.norep,0),'--nr','No reportada']],tot=Math.max(c.w,c.pt+c.mrep);
+ return`<div class="bar">${seg.map(([v,col])=>`<i style="width:${v/tot*100}%;background:var(${col})"></i>`).join('')}</div>
+ <div class="leg">${seg.map(([v,col,t])=>`<span><s style="background:var(${col})"></s>${t} ${f2(v)} kg</span>`).join('')}</div>
+ ${c.st==='revisar'?`<p class="b bad">Los datos suman ${f2(-c.norep)} kg más que la bobina. Revisa peso, PT o mermas.</p>`:''}
+ <div class="tw"><table style="margin-top:8px"><tr><th>Concepto</th><th class="n">Kg</th><th class="n">% bobina</th></tr>
+ <tr><td>Peso de la bobina</td><td class="n">${f2(c.w)}</td><td class="n">100.00</td></tr><tr><td>Peso por caja (kg)</td><td class="n">${c.wcaja.toFixed(3)}</td><td></td></tr>
+ <tr><td>Producto terminado</td><td class="n">${f2(c.pt)}</td><td class="n">${f2(c.ppt)}</td></tr>
+ ${AREAS.map(([a,t],i)=>`<tr><td>${t}</td><td class="n">${f2(c.m[i])}</td><td class="n">${f2(c.pm[i])}</td></tr>`).join('')}
+ <tr><td><b>Merma total</b></td><td class="n">${f2(c.mtot)}</td><td class="n">${f2(c.pmtot)}</td></tr><tr><td>Merma reportada</td><td class="n">${f2(c.mrep)}</td><td class="n">${f2(c.pmrep)}</td></tr>
+ <tr><td><b>Merma no reportada</b></td><td class="n">${f2(c.norep)}</td><td class="n">${f2(c.pnorep)}</td></tr></table></div>`}
+function vStats(){const st=U.st||(U.st={solo:'terminada',rev:false,d1:'',d2:''});
+ const sum=(A,f)=>A.reduce((a,x)=>a+f(x),0),T=A=>({n:A.length,w:sum(A,x=>x.c.w),pt:sum(A,x=>x.c.pt),m:[0,1,2,3].map(i=>sum(A,x=>x.c.m[i])),mrep:sum(A,x=>x.c.mrep),nr:sum(A,x=>x.c.norep)});
+ const all=S.salidas.filter(s=>(st.solo==='todas'||s.estado==='terminada')&&(!st.d1||s.fecha>=st.d1)&&(!st.d2||s.fecha<=st.d2)).map(s=>({s,c:calc(s)}));
+ const L=all.filter(x=>x.c.st==='ok'||(st.rev&&x.c.st==='revisar')),t=T(L),pc=(v,w=t.w)=>w>0?v/w*100:0;
+ const nInc=all.filter(x=>x.c.st==='incompleto').length,nRev=all.filter(x=>x.c.st==='revisar').length;
+ const bar=(v,col)=>`<div class="bar" style="height:8px;margin:3px 0"><i style="width:${Math.min(Math.max(v,0),100)}%;background:var(${col})"></i></div>`;
+ const grp=k=>{const g={};L.forEach(x=>{const n=String(x.s[k]||'').trim()||'(sin '+k+')';(g[n]=g[n]||[]).push(x)});return Object.entries(g).map(([n,a])=>[n,T(a)]).sort((a,b)=>b[1].w-a[1].w)};
+ const gt=(rows,h)=>`<div class="tw"><table><tr><th>${h}</th><th class="n">Bobinas</th><th class="n">Kg</th><th class="n">Aprovechado %</th><th class="n">Desperdicio %</th><th class="n">No reportada %</th></tr>${rows.map(([n,a])=>`<tr><td>${esc(n)}</td><td class="n">${a.n}</td><td class="n">${f2(a.w)}</td><td class="n">${f2(pc(a.pt,a.w))}</td><td class="n">${f2(pc(a.mrep,a.w))}</td><td class="n">${f2(pc(a.nr,a.w))}</td></tr>`).join('')}</table></div>`;
+ const mo={};L.forEach(({s})=>AREAS.forEach(([a])=>(s.m[a]||[]).forEach(r=>{const k=String(r.concepto||'').trim()||'(sin concepto)',o=mo[k]||(mo[k]={kg:0,ar:new Set()});o.kg+=N(r.kg);o.ar.add(a.toUpperCase())})));
+ const mol=Object.entries(mo).sort((a,b)=>b[1].kg-a[1].kg);
+ const filtros=`<details class="card"><summary>Filtros</summary><div class="row" style="margin-top:8px"><label>Bobinas<select data-st="solo"><option value="terminada" ${st.solo==='terminada'?'selected':''}>Solo terminadas</option><option value="todas" ${st.solo==='todas'?'selected':''}>Todas</option></select></label>
+ <label>Desde<input type="date" data-st="d1" value="${st.d1}"></label><label>Hasta<input type="date" data-st="d2" value="${st.d2}"></label>
+ <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" data-st="rev" ${st.rev?'checked':''} style="min-width:0"> Incluir bobinas por revisar</label></div></details><div class="row" style="margin-bottom:10px"><button class="pri" data-act="pdfStats">PDF de estadísticas</button></div>`;
+ if(!L.length)return filtros+`<div class="card"><p class="mut">No hay bobinas con datos completos para calcular. Captura presentación, W suaje y cajas en Bobinas y márcalas como terminadas.${nInc?` Faltan datos en ${nInc}.`:''}${nRev&&!st.rev?` ${nRev} están por revisar (puedes incluirlas en Filtros).`:''}</p></div>`;
+ const kpi=(v,l,col)=>`<div class="card" style="margin:0"><div class="mut">${l}</div><div style="font-size:26px;font-weight:700;color:var(${col})">${f2(pc(v))}%</div><div class="mut">${f2(v)} kg</div></div>`;
+ return filtros+`<p class="mut">Se consideran ${L.length} bobinas (${f2(t.w)} kg).${nInc?` Sin calcular por faltar datos: ${nInc}.`:''}${nRev?` Por revisar: ${nRev}${st.rev?' (incluidas)':' (excluidas)'}.`:''}</p>
+ <div class="g2" style="margin-bottom:12px">${kpi(t.pt,'Aprovechado (producto terminado)','--pt')}${kpi(t.mrep,'Desperdiciado (merma reportada)','--m3')}${kpi(t.nr,'No reportado','--nr')}</div>
+ <div class="card"><b>¿A dónde se fueron los kilos?</b><div class="bar">${[[t.pt,'--pt'],...AREAS.map(([a,x,c],i)=>[t.m[i],c]),[Math.max(t.nr,0),'--nr']].map(([v,c])=>`<i style="width:${pc(v)}%;background:var(${c})"></i>`).join('')}</div>
+ <div class="leg"><span><s style="background:var(--pt)"></s>Aprovechado</span>${AREAS.map(([a,x,c],i)=>`<span><s style="background:var(${c})"></s>${x} ${f2(pc(t.m[i]))}%</span>`).join('')}<span><s style="background:var(--nr)"></s>No reportado</span></div></div>
+ <div class="card"><b>Merma por área</b>${AREAS.map(([a,x,c],i)=>`<div class="row" style="align-items:center"><span style="width:130px">${x}</span><span style="flex:1;min-width:120px">${bar(pc(t.m[i]),c)}</span><span class="mut" style="width:130px;text-align:right">${f2(t.m[i])} kg · ${f2(pc(t.m[i]))}%</span></div>`).join('')}</div>
+ <div class="card"><b>Merma por motivo</b>${mol.length?`<div class="tw"><table><tr><th>Motivo</th><th>Áreas</th><th class="n">Kg</th><th class="n">% de la merma</th><th class="n">% de la bobina</th></tr>${mol.map(([k,o])=>`<tr><td>${esc(k)}</td><td>${[...o.ar].join(', ')}</td><td class="n">${f2(o.kg)}</td><td class="n">${f2(pc(o.kg,t.mrep))}</td><td class="n">${f2(pc(o.kg))}</td></tr>`).join('')}</table></div>`:'<p class="mut">Aún no hay mermas capturadas.</p>'}</div>
+ <div class="card"><b>Por operador</b>${gt(grp('operador'),'Operador')}</div><div class="card"><b>Por máquina</b>${gt(grp('maquina'),'Máquina')}</div>`}
+function vDatos(){return`<div class="card"><b>Respaldo JSON</b><p class="mut">Los datos se guardan en este navegador. Descarga un respaldo seguido, sobre todo si cambias de equipo.</p>
+ <div class="row"><button class="pri" data-act="expJ">Descargar JSON</button><button data-act="cpJ">Copiar JSON</button><label>Importar JSON<input type="file" id="f_json" accept=".json"></label></div>
+ <textarea id="ta" placeholder="Pega aquí un JSON y presiona Cargar">${esc(JSON.stringify(S))}</textarea><div class="row" style="margin-top:6px"><button data-act="loadJ">Cargar JSON pegado</button></div></div>
+ <details class="card"><summary>Filtro de claves al importar</summary><div class="row" style="margin:8px 0"><label>La clave empieza con<input id="rg_i" value="${esc(rg().inicia)}"></label><label>y contiene<input id="rg_c" value="${esc(rg().contiene)}"></label></div><p class="mut">La clave se compara contra la columna Clave, sin importar mayúsculas. "Contiene" busca también en las demás columnas de texto (nombre, descripción). Abajo puedes agregar claves exactas (una por línea o separadas por coma) que siempre se importan. Con todo vacío se importan todas.</p>
+ <textarea id="ta_cl" style="min-height:70px">${esc(S.claves.join('\n'))}</textarea><button data-act="saveCl">Guardar claves</button></details>
+ <details class="card"><summary>Conceptos de merma</summary><p class="mut">Se agregan solos al escribirlos en una merma. Aquí puedes quitarlos.</p><div class="row">${S.conceptos.map((c,i)=>`<span class="b">${esc(c)} <a href="#" data-act="delC" data-i="${i}" style="color:var(--bad);text-decoration:none">✕</a></span>`).join('')}</div></details>
+ <details class="card"><summary>Ejemplo del Excel de cálculo</summary><p class="mut">Carga 4 bobinas de ejemplo con los datos de PRUEBA_001_Programa.xlsx para comprobar que los resultados coinciden.</p><button data-act="seed">Cargar ejemplo</button>
+ <button class="del" data-act="wipe">${U.wipe?'Confirmar: borrar todo':'Borrar todos los datos'}</button></details>`}
+/* ---------- PDF ---------- */
+const RGB={pt:[47,125,79],m1:[224,165,38],m2:[216,116,43],m3:[184,67,58],m4:[122,79,163],nr:[138,148,160]};
+function pdfBob(s){const{jsPDF}=window.jspdf,d=new jsPDF({unit:'pt',format:'letter'}),W=d.internal.pageSize.getWidth(),ml=40,cw=W-80,c=calc(s);let y=48;
+ d.setFont('helvetica','bold').setFontSize(16).text('Resultado de bobina',ml,y);d.setFont('helvetica','normal').setFontSize(9).text('Generado: '+fmtD(today()),W-ml,y,{align:'right'});y+=14;
+ d.autoTable({startY:y,theme:'plain',styles:{fontSize:9,cellPadding:3},margin:{left:ml,right:ml},body:[['Lote',s.lote,'Orden de trabajo',s.ot||'—'],['Clave',s.clave,'Fecha',fmtD(s.fecha)],['Turno',s.turno||'—','Operador',s.operador||'—'],['Máquina',s.maquina||'—','ID Contpaq',s.id_contpaq||'—']],columnStyles:{0:{fontStyle:'bold',cellWidth:70},1:{cellWidth:'auto'},2:{fontStyle:'bold',cellWidth:95},3:{cellWidth:'auto'}}});
+ y=d.lastAutoTable.finalY+10;
+ const rows=[['Peso de la bobina',f2(c.w),'100.00'],['Producto terminado',f2(c.pt),f2(c.ppt)],...AREAS.map(([a,t],i)=>[t,f2(c.m[i]),f2(c.pm[i])]),['Merma total',f2(c.mtot),f2(c.pmtot)],['Merma reportada',f2(c.mrep),f2(c.pmrep)],['Merma no reportada',f2(c.norep),f2(c.pnorep)]];
+ d.autoTable({startY:y,head:[['Concepto','Kg','% de la bobina']],body:rows,margin:{left:ml,right:ml},styles:{fontSize:9.5,cellPadding:4},headStyles:{fillColor:[11,92,171]},columnStyles:{1:{halign:'right'},2:{halign:'right'}},didParseCell:h=>{if(h.section==='body'&&(h.row.index===6||h.row.index===8))h.cell.styles.fontStyle='bold'}});
+ y=d.lastAutoTable.finalY+8;
+ d.setFontSize(9).text(`Cálculo: peso por caja = paquetes x piezas x W suaje / 1000 = ${c.wcaja.toFixed(3)} kg; PT = ${N(s.calc.ptm)>0?'valor manual':'cajas ('+N(s.calc.cajas)+') x peso por caja'}.`,ml,y,{maxWidth:cw});y+=26;
+ if(y>600){d.addPage();y=48}
+ d.setFont('helvetica','bold').setFontSize(11).text('¿A dónde se fueron los kilos de la bobina?',ml,y);y+=12;
+ const seg=[[c.pt,'pt','Producto terminado'],...AREAS.map(([a,t],i)=>[c.m[i],a,t]),[Math.max(c.norep,0),'nr','No reportada']],tot=Math.max(c.w,c.pt+c.mrep);let x=ml;
+ seg.forEach(([v,k])=>{const w=v/tot*cw;if(w>0){d.setFillColor(...RGB[k]).rect(x,y,w,26,'F');x+=w}});d.setDrawColor(31,41,51).setLineWidth(1.2).line(ml+c.w/tot*cw,y-4,ml+c.w/tot*cw,y+30);y+=44;
+ d.setFont('helvetica','normal').setFontSize(9);seg.forEach(([v,k,t],i)=>{const cx=ml+(i%2)*(cw/2),cy=y+Math.floor(i/2)*15;d.setFillColor(...RGB[k]).rect(cx,cy-8,9,9,'F');d.setTextColor(31,41,51).text(`${t}: ${f2(v)} kg (${f2(c.w>0?v/c.w*100:0)}%)`,cx+14,cy)});y+=Math.ceil(seg.length/2)*15+4;
+ d.setFontSize(8).setTextColor(90).text('La línea negra marca el peso de la bobina.',ml,y);d.setTextColor(0);y+=12;
+ if(c.st==='revisar'){d.setTextColor(180,35,24).setFontSize(9).text(`Atención: los datos suman ${f2(-c.norep)} kg más que la bobina. Revisar peso, PT o mermas.`,ml,y,{maxWidth:cw});d.setTextColor(0);y+=18}
+ const det=AREAS.flatMap(([a,t])=>(s.m[a]||[]).map(r=>[t,r.concepto||'(sin concepto)',f2(r.kg)]));
+ if(det.length)d.autoTable({startY:y+4,head:[['Área','Concepto de merma','Kg']],body:det,margin:{left:ml,right:ml},styles:{fontSize:9,cellPadding:3},headStyles:{fillColor:[11,92,171]},columnStyles:{2:{halign:'right'}}});
+ return d}
+function pdfEntrega(L){const{jsPDF}=window.jspdf,d=new jsPDF({unit:'pt',format:'letter'}),W=d.internal.pageSize.getWidth(),ml=40;
+ d.setFont('helvetica','bold').setFontSize(16).text('Entrega de bobinas terminadas',ml,48);d.setFont('helvetica','normal').setFontSize(10).text('Fecha del reporte: '+fmtD(today()),ml,66);
+ const kg=L.reduce((a,s)=>a+N(s.cantidad),0);
+ d.autoTable({startY:80,head:[['Recibido','Lote','Orden','Clave','Peso (kg)']],body:L.map(s=>['',s.lote,s.ot||'—',s.clave,f2(s.cantidad)]),foot:[['',`${L.length} bobinas`,'','',f2(kg)]],margin:{left:ml,right:ml,bottom:40},styles:{fontSize:9.5,cellPadding:{top:6,bottom:6,left:4,right:4},overflow:'linebreak',valign:'middle'},headStyles:{fillColor:[11,92,171]},footStyles:{fillColor:[238,243,249],textColor:20},
+  columnStyles:{0:{cellWidth:55,halign:'center'},1:{cellWidth:'auto'},2:{cellWidth:70},3:{cellWidth:80},4:{cellWidth:70,halign:'right'}},showFoot:'lastPage',
+  didDrawCell:h=>{if(h.section==='body'&&h.column.index===0){d.setDrawColor(40).setLineWidth(.8).rect(h.cell.x+h.cell.width/2-6,h.cell.y+h.cell.height/2-6,12,12)}}});
+ let y=d.lastAutoTable.finalY+34;if(y>640){d.addPage();y=60}
+ const bx=(x,t)=>{d.setFont('helvetica','bold').setFontSize(10).text(t,x,y);d.setFont('helvetica','normal').setFontSize(9);['Nombre','Firma','Fecha'].forEach((l,i)=>{d.setDrawColor(60).setLineWidth(.6).line(x,y+30+i*30,x+210,y+30+i*30);d.text(l,x,y+40+i*30)})};
+ bx(ml,'Entrega');bx(W-ml-210,'Recibe');return d}
+function sdata(){const st=U.st||(U.st={solo:'terminada',rev:false,d1:'',d2:''});
+ const sum=(A,f)=>A.reduce((a,x)=>a+f(x),0),T=A=>({n:A.length,w:sum(A,x=>x.c.w),pt:sum(A,x=>x.c.pt),m:[0,1,2,3].map(i=>sum(A,x=>x.c.m[i])),mrep:sum(A,x=>x.c.mrep),nr:sum(A,x=>x.c.norep)});
+ const all=S.salidas.filter(s=>(st.solo==='todas'||s.estado==='terminada')&&(!st.d1||s.fecha>=st.d1)&&(!st.d2||s.fecha<=st.d2)).map(s=>({s,c:calc(s)}));
+ const L=all.filter(x=>x.c.st==='ok'||(st.rev&&x.c.st==='revisar')),t=T(L);
+ const grp=k=>{const g={};L.forEach(x=>{const n=String(x.s[k]||'').trim()||'(sin '+k+')';(g[n]=g[n]||[]).push(x)});return Object.entries(g).map(([n,a])=>[n,T(a)]).sort((a,b)=>b[1].w-a[1].w)};
+ const mo={};L.forEach(({s})=>AREAS.forEach(([a])=>(s.m[a]||[]).forEach(r=>{const k=String(r.concepto||'').trim()||'(sin concepto)',o=mo[k]||(mo[k]={kg:0,ar:new Set()});o.kg+=N(r.kg);o.ar.add(a.toUpperCase())})));
+ return{st,all,L,t,grp,mol:Object.entries(mo).sort((a,b)=>b[1].kg-a[1].kg)}}
+function pdfStats(){const{jsPDF}=window.jspdf,d=new jsPDF({unit:'pt',format:'letter'}),W=d.internal.pageSize.getWidth(),ml=40,cw=W-80;
+ const{st,all,L,t,grp,mol}=sdata(),pc=(v,w=t.w)=>w>0?v/w*100:0;let y=48;
+ const need=h=>{if(y+h>735){d.addPage();y=48}};
+ const H2=s=>{need(46);d.setFont('helvetica','bold').setFontSize(12).setTextColor(11,92,171).text(s,ml,y);d.setTextColor(0);y+=14};
+ const tab=(head,body,cs={})=>{need(60);d.autoTable({startY:y,head:[head],body,margin:{left:ml,right:ml,bottom:40},styles:{fontSize:9,cellPadding:4,overflow:'linebreak'},headStyles:{fillColor:[11,92,171]},columnStyles:cs});y=d.lastAutoTable.finalY+18};
+ const nInc=all.filter(x=>x.c.st==='incompleto').length,nRev=all.filter(x=>x.c.st==='revisar').length;
+ d.setFont('helvetica','bold').setFontSize(17).text('Estadísticas de merma',ml,y);d.setFont('helvetica','normal').setFontSize(9).text('Fecha del reporte: '+fmtD(today()),W-ml,y,{align:'right'});y+=16;
+ d.setFontSize(9).setTextColor(90).text(`Filtro: ${st.solo==='todas'?'todas las bobinas':'solo terminadas'}${st.d1?' · desde '+fmtD(st.d1):''}${st.d2?' · hasta '+fmtD(st.d2):''}. ${L.length} bobinas consideradas (${f2(t.w)} kg).${nInc?' Sin calcular por faltar datos: '+nInc+'.':''}${nRev?' Por revisar: '+nRev+(st.rev?' (incluidas).':' (excluidas).'):''}`,ml,y,{maxWidth:cw});d.setTextColor(0);y+=30;
+ if(!L.length){d.setFontSize(11).text('No hay bobinas con datos completos para calcular.',ml,y);return d}
+ const kp=[['Aprovechado (producto terminado)',t.pt,RGB.pt],['Desperdiciado (merma reportada)',t.mrep,RGB.m3],['No reportado',t.nr,RGB.nr]],bw=(cw-20)/3;
+ kp.forEach(([l,v,c],i)=>{const x=ml+i*(bw+10);d.setFillColor(238,243,249).roundedRect(x,y,bw,58,4,4,'F');d.setFont('helvetica','normal').setFontSize(8).setTextColor(90).text(l,x+8,y+14,{maxWidth:bw-16});d.setFont('helvetica','bold').setFontSize(18).setTextColor(...c).text(f2(pc(v))+'%',x+8,y+38);d.setFont('helvetica','normal').setFontSize(8).setTextColor(90).text(f2(v)+' kg',x+8,y+51)});d.setTextColor(0);y+=78;
+ H2('¿A dónde se fueron los kilos?');
+ const seg=[[t.pt,'pt','Aprovechado'],...AREAS.map(([a,x],i)=>[t.m[i],a,x]),[Math.max(t.nr,0),'nr','No reportado']],tot=Math.max(t.w,t.pt+t.mrep);let x0=ml;
+ seg.forEach(([v,k])=>{const w=v/tot*cw;if(w>0){d.setFillColor(...RGB[k]).rect(x0,y,w,24,'F');x0+=w}});y+=42;
+ d.setFont('helvetica','normal').setFontSize(9);seg.forEach(([v,k,l],i)=>{const cx=ml+(i%2)*(cw/2),cy=y+Math.floor(i/2)*15;d.setFillColor(...RGB[k]).rect(cx,cy-8,9,9,'F');d.text(`${l}: ${f2(v)} kg (${f2(pc(v))}%)`,cx+14,cy)});y+=Math.ceil(seg.length/2)*15+14;
+ H2('Merma por área');tab(['Área','Kg','% de la bobina','% de la merma reportada'],AREAS.map(([a,x],i)=>[x,f2(t.m[i]),f2(pc(t.m[i])),f2(pc(t.m[i],t.mrep))]),{1:{halign:'right'},2:{halign:'right'},3:{halign:'right'}});
+ H2('Merma por motivo');
+ if(!mol.length){d.setFont('helvetica','normal').setFontSize(9).text('Aún no hay mermas capturadas.',ml,y);y+=18}else{
+  const mx=mol[0][1].kg||1,bw2=cw-250;
+  mol.slice(0,8).forEach(([k,o])=>{need(20);const w=Math.max(o.kg/mx*bw2,1);d.setFont('helvetica','normal').setFontSize(8.5).text(String(k),ml,y+9,{maxWidth:125});d.setFillColor(...RGB.m3).rect(ml+130,y,w,12,'F');d.text(`${f2(o.kg)} kg · ${f2(pc(o.kg,t.mrep))}%`,ml+130+w+4,y+9);y+=18});y+=8;
+  tab(['Motivo','Áreas','Kg','% de la merma','% de la bobina'],mol.map(([k,o])=>[k,[...o.ar].join(', '),f2(o.kg),f2(pc(o.kg,t.mrep)),f2(pc(o.kg))]),{2:{halign:'right'},3:{halign:'right'},4:{halign:'right'}})}
+ const gr=(k,h)=>{H2(h);tab([k,'Bobinas','Kg','Aprovechado %','Desperdicio %','No reportada %'],grp(h==='Por operador'?'operador':'maquina').map(([n,a])=>[n,a.n,f2(a.w),f2(pc(a.pt,a.w)),f2(pc(a.mrep,a.w)),f2(pc(a.nr,a.w))]),{1:{halign:'right'},2:{halign:'right'},3:{halign:'right'},4:{halign:'right'},5:{halign:'right'}})};
+ gr('Operador','Por operador');gr('Máquina','Por máquina');
+ d.setFont('helvetica','normal').setFontSize(8).setTextColor(90);need(40);d.text('Aprovechado = producto terminado. Desperdicio = merma reportada (M1 a M4). No reportada = peso de la bobina menos producto terminado menos merma reportada. Porcentajes sobre el peso de las bobinas.',ml,y,{maxWidth:cw});d.setTextColor(0);
+ const n=d.getNumberOfPages();for(let i=1;i<=n;i++){d.setPage(i);d.setFont('helvetica','normal').setFontSize(8).setTextColor(120).text(`Página ${i} de ${n}`,W-ml,764,{align:'right'})}
+ return d}
+/* ---------- eventos ---------- */
+const setP=(o,p,v)=>{const a=p.split('.');a.slice(0,-1).forEach(k=>o=o[k]);o[a.at(-1)]=v};
+document.addEventListener('toggle',e=>{const k=e.target.dataset?.key;if(k)e.target.open?U.open.add(k):U.open.delete(k)},true);
+document.addEventListener('click',async e=>{const t=e.target.closest('[data-act]');if(!t)return;const a=t.dataset.act,id=t.dataset.id,b=S.salidas.find(s=>s.id===id);if(a==='delC')e.preventDefault();
+ if(a==='tab'){U.tab=t.dataset.v}else if(a==='sub'){U.sub=t.dataset.v}
+ else if(a==='addT'){const ot=$('#t_ot').value.trim(),n=N($('#t_n').value);if(!ot||!n)return toast('Captura orden y cantidad entregada');S.tintas.push({id:uid(),fecha:$('#t_f').value||today(),ot,entregadas:n,obs:$('#t_o').value.trim()})}
+ else if(a==='crearPend'){const ot=t.dataset.ot,n=+t.dataset.n;for(let i=0;i<n;i++)S.salidas.push(newB({cantidad:'',ot,lote:'',clave:'',categoria:'',id_contpaq:'',fecha:today(),manual:true}))}
+ else if(a==='delT')S.tintas=S.tintas.filter(x=>x.id!==id);
+ else if(a==='editT')U.editT=id;else if(a==='cancelT')U.editT=null;
+ else if(a==='saveT'){const ot=$('#e_ot').value.trim(),n=N($('#e_n').value),x=S.tintas.find(z=>z.id===id);if(!ot||!n)return toast('Captura orden y cantidad entregada');Object.assign(x,{fecha:$('#e_f').value||x.fecha,ot,entregadas:n,obs:$('#e_o').value.trim()});U.editT=null}
+ else if(a==='addM')b.m[t.dataset.a].push({kg:'',concepto:''});else if(a==='delM')b.m[t.dataset.a].splice(+t.dataset.i,1);
+ else if(a==='toggleE'){b.estado='proceso';delete b.fecha_completo}
+ else if(a==='completo'){const c=calc(b);if(c.st!=='ok'&&t.dataset.c!=='1'){t.dataset.c='1';t.textContent=c.st==='incompleto'?'Faltan datos: presiona otra vez para completar':'Los datos no cuadran: presiona otra vez para completar';return}b.estado='terminada';b.fecha_completo=today()}
+ else if(a==='delB'){if(t.dataset.c!=='1'){t.dataset.c='1';t.textContent='Confirmar eliminar';return}S.salidas=S.salidas.filter(x=>x.id!==id)}
+ else if(a==='pdfBob'){const c0=calc(b);if(c0.st==='incompleto')return toast(c0.w<=0?'Captura el peso de la bobina (Datos de la salida) antes del PDF':'Faltan presentación, W suaje y cajas (o PT manual)');try{await out(`resultado_${String(b.lote).replace(/[^\w.-]+/g,'_')}.pdf`,pdfBob(b).output('arraybuffer'),'application/pdf')}catch(x){toast('Error al generar el PDF')}return}
+ else if(a==='pdfEntrega'){const L=filt().filter(s=>s.estado==='terminada');if(!L.length)return toast('No hay bobinas terminadas en el filtro');try{await out(`entrega_${today()}.pdf`,pdfEntrega(L).output('arraybuffer'),'application/pdf')}catch(x){toast('Error al generar el PDF')}return}
+ else if(a==='pdfStats'){try{await out(`estadisticas_${today()}.pdf`,pdfStats().output('arraybuffer'),'application/pdf')}catch(x){toast('Error al generar el PDF')}return}
+ else if(a==='expJ'){await out(`respaldo_merma_${today()}.json`,JSON.stringify(S,null,1),'application/json');return}
+ else if(a==='cpJ'){$('#ta').select();try{await navigator.clipboard.writeText($('#ta').value);toast('JSON copiado')}catch(x){toast('Selecciónalo y copia con Ctrl+C')}return}
+ else if(a==='loadJ'){try{const x=JSON.parse($('#ta').value);if(!x.salidas)throw 0;S=x;S.claves=S.claves||[];S.conceptos=S.conceptos||[];S.tintas=S.tintas||[];toast('Datos cargados')}catch(x){return toast('JSON no válido')}}
+ else if(a==='saveCl'){S.regla={inicia:$('#rg_i').value.trim(),contiene:$('#rg_c').value.trim()};S.claves=$('#ta_cl').value.split(/[\n,]/).map(x=>x.trim()).filter(Boolean);toast('Claves guardadas')}
+ else if(a==='delC')S.conceptos.splice(+t.dataset.i,1);
+ else if(a==='seed')seed();
+ else if(a==='wipe'){if(!U.wipe){U.wipe=1;render();return}U.wipe=0;S.tintas=[];S.salidas=[]}
+ save();render()});
+document.addEventListener('change',async e=>{const t=e.target;
+ if(t.id==='f_xlsx'&&t.files[0]){try{const wb=XLSX.read(await t.files[0].arrayBuffer(),{type:'array',cellDates:true}),rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:'',raw:true}),r=mapRows(rows,S.claves,S.salidas,rg());
+  r.add.forEach(x=>{const ph=S.salidas.find(s=>s.manual&&!s.lote&&!N(s.cantidad)&&x.ot&&s.ot===x.ot);if(ph)Object.assign(ph,x,{manual:false});else S.salidas.push(newB(x))});const miss=['cantidad','id_contpaq','categoria','clave','lote','fecha','ot'].filter(c=>!r.cols.has(c));
+  U.msg=`${r.add.length} nuevas · ${r.dup} duplicadas eliminadas · ${r.filt} descartadas por clave · ${r.neg} negativas pasadas a positivo · ${r.rev} con lote repetido y datos distintos${miss.length?' · No encontré las columnas: '+miss.join(', '):''}${r.filt&&r.ej.length?' · Ejemplos de clave descartada: '+r.ej.map(x=>x||'(vacía)').join(', '):''}${r.add.length?'':' · Columnas del archivo: '+r.keys.join(', ')}`}catch(x){U.msg='No pude leer el archivo'}save();render();return}
+ if(t.id==='f_json'&&t.files[0]){$('#ta').value=await t.files[0].text();toast('Revisa y presiona "Cargar JSON pegado"');return}
+ if(t.dataset.st){U.st[t.dataset.st]=t.type==='checkbox'?t.checked:t.value;render();return}
+ if(t.dataset.f){U.f[t.dataset.f]=t.value;render();return}
+ if(t.dataset.p){const b=S.salidas.find(s=>s.id===t.dataset.id);setP(b,t.dataset.p,t.value);if(/concepto$/.test(t.dataset.p)&&t.value&&!S.conceptos.includes(t.value))S.conceptos.push(t.value);save();render()}});
+document.addEventListener('input',e=>{if(e.target.dataset.act==='q2'){U.q2=e.target.value;const p=e.target.selectionStart;render();const n=document.querySelector('[data-act="q2"]');n.focus();n.setSelectionRange(p,p)}});
+$('#theme').onclick=()=>{const r=document.documentElement,c=r.dataset.theme,dark=c?c==='dark':matchMedia('(prefers-color-scheme:dark)').matches;r.dataset.theme=dark?'light':'dark'};
+function seed(){const ej=[['5477-3009169',1078,11,15,11.4,414,'',[10.78],[8.62],[265.51]],['4972-0120299',1198,2,100,14.43,340,'',[4.2],[22.4],[100]],
+ ['5029-2627198 (granel)',514,1,36300,11.6,1,'',[0],[5.25,4.2],[237,54.6]],['5251-0826312 y 5220-2327166',1027,'','',11.6,'',1187.4,[2.8,18.2,15,24],[17.8,21.8],[140,71.5]]];
+ ej.forEach(([lote,w,paq,pz,wsu,cajas,ptm,a,b,c])=>S.salidas.push(newB({lote,cantidad:w,ot:'EJEMPLO',clave:'EJ',fecha:today(),estado:'terminada',calc:{paq,pz,wsu,cajas,ptm},m:{m1:a.map(kg=>({kg,concepto:'Impresión'})),m2:b.map(kg=>({kg,concepto:'Suajado'})),m3:c.map(kg=>({kg,concepto:'Desbarbe'})),m4:[]}})));toast('Ejemplo cargado en Bobinas')}
+render();
+</script>
+</body>
+</html>
